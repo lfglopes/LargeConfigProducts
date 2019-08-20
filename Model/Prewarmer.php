@@ -2,21 +2,33 @@
 
 namespace Elgentos\LargeConfigProducts\Model;
 
-use Credis_Client;
+use Elgentos\LargeConfigProducts\Cache\CredisClientFactory;
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\ConfigurableProduct\Block\Product\View\Type\Configurable as ProductTypeConfigurable;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\App\Area;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Framework\Registry;
 use Magento\Framework\View\Element\BlockFactory;
 use Magento\Store\Model\App\Emulation;
 use Magento\Store\Model\StoreManagerInterface;
+use Magento\Framework\App\Cache\Manager as CacheManager;
+use Magento\Framework\App\Cache\Type\Collection as CacheTypeCollection;
 
+/**
+ * Class Prewarmer
+ * @package Elgentos\LargeConfigProducts\Model
+ */
 class Prewarmer {
     protected $credis;
     protected $storeManager;
     protected $productRepository;
+    /**
+     * @var StoreIdStatic
+     */
+    protected $storeIdValueObject;
+    /**
+     * @var CacheManager
+     */
+    protected $cacheManager;
     /**
      * @var SearchCriteriaBuilder
      */
@@ -25,54 +37,44 @@ class Prewarmer {
      * @var Emulation
      */
     private $emulation;
-    /**
-     * @var ScopeConfigInterface
-     */
-    private $scopeConfig;
-    /**
-     * @var Registry
-     */
-    private $coreRegistry;
+
     /**
      * @var BlockFactory
      */
     private $blockFactory;
 
-    const PREWARM_CURRENT_STORE = 'PREWARM_CURRENT_STORE';
-
     /**
      * PrewarmerCommand constructor.
+     *
      * @param ProductRepositoryInterface $productRepository
      * @param StoreManagerInterface $storeManager
      * @param SearchCriteriaBuilder $searchCriteriaBuilder
      * @param Emulation $emulation
-     * @param Registry $coreRegistry
+     * @param CredisClientFactory $credisClientFactory
      * @param BlockFactory $blockFactory
-     * @param ScopeConfigInterface $scopeConfig
+     * @param CacheManager $cacheManager
+     * @param StoreIdStatic $storeIdValueObject
      */
     public function __construct(
         ProductRepositoryInterface $productRepository,
         StoreManagerInterface $storeManager,
         SearchCriteriaBuilder $searchCriteriaBuilder,
         Emulation $emulation,
-        Registry $coreRegistry,
+        CredisClientFactory $credisClientFactory,
         BlockFactory $blockFactory,
-        ScopeConfigInterface $scopeConfig
+        CacheManager $cacheManager,
+        StoreIdStatic $storeIdValueObject
     ) {
-        $this->productRepository = $productRepository;
-        $this->storeManager = $storeManager;
+        $this->productRepository     = $productRepository;
+        $this->storeManager          = $storeManager;
+        $this->productRepository     = $productRepository;
+        $this->credis                = $credisClientFactory->create();
+        $this->storeManager          = $storeManager;
         $this->searchCriteriaBuilder = $searchCriteriaBuilder;
-        $this->emulation = $emulation;
-        $this->coreRegistry = $coreRegistry;
-        $this->blockFactory = $blockFactory;
-
-        $this->credis = new Credis_Client(
-            $scopeConfig->getValue('elgentos_largeconfigproducts/prewarm/redis_host') ?? 'localhost',
-            $scopeConfig->getValue('elgentos_largeconfigproducts/prewarm/redis_port') ?? 6379,
-            null,
-            '',
-            $scopeConfig->getValue('elgentos_largeconfigproducts/prewarm/redis_db_index') ?? 4
-        );
+        $this->emulation             = $emulation;
+        $this->blockFactory          = $blockFactory;
+        $this->cacheManager          = $cacheManager;
+        $this->storeIdValueObject    = $storeIdValueObject;
     }
 
     public function prewarm($productIdsToWarm, $storeCodesToWarm, $force)
@@ -84,6 +86,7 @@ class Prewarmer {
         $output = [];
 
         if (\is_array($productIdsToWarm) && \count($productIdsToWarm) > 0) {
+            // Add to search criteria builder
             $this->searchCriteriaBuilder->addFilter('entity_id', $productIdsToWarm, 'in');
         }
         $this->searchCriteriaBuilder->addFilter('type_id', 'configurable');
@@ -107,6 +110,9 @@ class Prewarmer {
             }
         }
 
+        // Clean colllections cache type, otherwise Magento will fetch the old prices
+        $this->cacheManager->clean([CacheTypeCollection::TYPE_IDENTIFIER]);
+
         $i = 1;
         foreach ($stores as $store) {
             /**
@@ -116,9 +122,8 @@ class Prewarmer {
             $this->emulation->stopEnvironmentEmulation();
             $this->emulation->startEnvironmentEmulation($store->getId(), Area::AREA_FRONTEND, true);
 
-            $this->credis->set(self::PREWARM_CURRENT_STORE, $store->getId());
-
             $this->storeManager->setCurrentStore($store->getId());
+            $this->storeIdValueObject->setStoreId($store->getId());
 
             /** @var \Magento\Catalog\Api\Data\ProductInterface[] $products */
             $products = $this->productRepository->getList($searchCriteria)->getItems();
@@ -150,14 +155,8 @@ class Prewarmer {
      */
     public function getJsonConfig($currentProduct)
     {
-        /* Set product in registry */
-        if ($this->coreRegistry->registry('product')) {
-            $this->coreRegistry->unregister('product');
-        }
-        $this->coreRegistry->register('product', $currentProduct);
-
         /** @var ProductTypeConfigurable $block */
-        $block = $this->blockFactory->createBlock(ProductTypeConfigurable::class);
+        $block = $this->blockFactory->createBlock(ProductTypeConfigurable::class)->setData('product', $currentProduct);
 
         return $block->getJsonConfig();
     }

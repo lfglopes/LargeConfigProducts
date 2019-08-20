@@ -10,6 +10,8 @@ use Psr\Log\LoggerInterface;
 
 class Consumer implements ConsumerInterface
 {
+    const PREWARM_PROCESS_TIMEOUT = 300;
+    
     /**
      * @var LoggerInterface
      */
@@ -61,7 +63,7 @@ class Consumer implements ConsumerInterface
         }
 
         try {
-            $process = new Process(sprintf('php %s/bin/magento lcp:prewarm -p %s --force=true', $absolutePath, $productId));
+            $process = new Process(sprintf('php %s/bin/magento lcp:prewarm -p %s --force=true', $absolutePath, $productId), null, null, null, self::PREWARM_PROCESS_TIMEOUT);
             $process->run();
             echo $process->getOutput();
         } catch (\Exception $e) {

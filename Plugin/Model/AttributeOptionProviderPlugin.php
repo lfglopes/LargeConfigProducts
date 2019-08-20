@@ -5,43 +5,51 @@
  * Date: 21-2-18
  * Time: 13:53
  */
+
 namespace Elgentos\LargeConfigProducts\Plugin\Model;
-use Elgentos\LargeConfigProducts\Model\Prewarmer;
-use Magento\Catalog\Model\ProductFactory;
-use Magento\Framework\App\DeploymentConfig;
+
+use Elgentos\LargeConfigProducts\Model\StoreIdStatic;
 use Magento\Store\Model\StoreManagerInterface;
-use Credis_Client;
+
+/**
+ * Class AttributeOptionProviderPlugin
+ * @package Elgentos\LargeConfigProducts\Plugin\Model
+ */
 class AttributeOptionProviderPlugin
 {
+    /** @var StoreIdStatic */
+    public $storeIdValueObject;
+
+    /** @var StoreManagerInterface */
     protected $storeManager;
-    protected $credis;
+
     /**
      * AttributeOptionProviderPlugin constructor.
+     *
      * @param StoreManagerInterface $storeManager
+     * @param StoreIdStatic $storeIdValueObject
      */
     public function __construct(
         StoreManagerInterface $storeManager,
-        DeploymentConfig $deploymentConfig
+        StoreIdStatic $storeIdValueObject
     ) {
-        $cacheSetting = $deploymentConfig->get('cache');
-        if (isset($cacheSetting['frontend']['default']['backend_options']['server'])) {
-            $this->credis = new Credis_Client($cacheSetting['frontend']['default']['backend_options']['server']);
-            $this->credis->select(4);
-        }
         $this->storeManager = $storeManager;
+        $this->storeIdValueObject = $storeIdValueObject;
     }
-    public function beforeGetAttributeOptions(\Magento\ConfigurableProduct\Model\AttributeOptionProvider $subject, \Magento\Eav\Model\Entity\Attribute\AbstractAttribute $superAttribute, $productId)
-    {
+
+    public function beforeGetAttributeOptions(
+        \Magento\ConfigurableProduct\Model\AttributeOptionProvider $subject,
+        \Magento\Eav\Model\Entity\Attribute\AbstractAttribute $superAttribute,
+        $productId
+    ) {
         /**
-         * The currentStoreId that is being set in the emulation in PrewarmerCommand is somehow lost in the call
-         * stack. This plugin uses the store ID found in the Redis DB to re-set the current store so the translated
-         * attribute option labels are retrieved correctly.
+         * The currentStoreId that is being set in the emulation in PrewarmerCommand is somehow lost in the call stack.
+         * This plugin uses the store ID found in the static store id value object to re-set the current store so the
+         * translated attribute option labels are retrieved correctly.
          */
-        if (PHP_SAPI == 'cli') {
-            $prewarmCurrentStore = $this->credis->get(Prewarmer::PREWARM_CURRENT_STORE);
-            if ($prewarmCurrentStore) {
-                $this->storeManager->setCurrentStore($prewarmCurrentStore);
-            }
+        $prewarmCurrentStore = $this->storeIdValueObject->getStoreId();
+        if ($prewarmCurrentStore) {
+            $this->storeManager->setCurrentStore($prewarmCurrentStore);
         }
     }
 }
