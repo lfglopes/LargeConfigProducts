@@ -2,13 +2,11 @@
 
 namespace Elgentos\LargeConfigProducts\Model;
 
-use Elgentos\LargeConfigProducts\Model\Prewarmer;
 use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Framework\MessageQueue\ConsumerInterface;
 use Symfony\Component\Process\Process;
 use Psr\Log\LoggerInterface;
 
-class Consumer implements ConsumerInterface
+class Consumer
 {
     const PREWARM_PROCESS_TIMEOUT = 300;
     
@@ -18,36 +16,28 @@ class Consumer implements ConsumerInterface
     protected $logger;
 
     /**
-     * @var Prewarmer
-     */
-    private $prewarmer;
-
-    /**
      * @var ScopeConfigInterface
      */
     private $scopeConfig;
 
     /**
      * @param \Psr\Log\LoggerInterface $logger
-     * @param Prewarmer $prewarmer
-     * @param Process $process
      * @param ScopeConfigInterface $scopeConfig
      */
     public function __construct(
         LoggerInterface $logger,
-        Prewarmer $prewarmer,
         ScopeConfigInterface $scopeConfig
     ) {
         $this->logger = $logger;
-        $this->prewarmer = $prewarmer;
         $this->scopeConfig = $scopeConfig;
     }
 
     /**
-     * {@inheritdoc}
+     * @param string $productId
      */
     public function process($productId)
     {
+
         echo sprintf('Processing %s..', $productId) . PHP_EOL;
 
         $absolutePath = $this->scopeConfig->getValue('elgentos_largeconfigproducts/prewarm/absolute_path');

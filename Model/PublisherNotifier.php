@@ -54,6 +54,8 @@ class PublisherNotifier {
             $this->moduleManager->isEnabled('Magento_MessageQueue')
             && $this->moduleManager->isEnabled('Magento_MysqlMq')
         ) {
+            // @TODO Message queue topic "lcp.product.prewarm" is not configured.
+            return;
             foreach ($productIds as $productId) {
                 $product = $this->productFactory->create()->load($productId);
                 if ($product->getTypeId() == Configurable::TYPE_CODE) {
